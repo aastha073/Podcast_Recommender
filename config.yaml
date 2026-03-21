@@ -1,0 +1,57 @@
+data:
+  raw_path: data/raw/podcasts.csv
+  processed_path: data/processed/
+  min_interactions: 5          # Drop users with fewer interactions
+  test_size: 0.2
+  random_seed: 42
+
+embedder:
+  model_name: all-MiniLM-L6-v2  # Fast, good quality. Swap for all-mpnet-base-v2 for better accuracy
+  batch_size: 64
+  max_seq_length: 256
+  embedding_dim: 384
+  cache_path: data/processed/embeddings.npy
+
+collaborative:
+  algorithm: svd               # Options: svd, nmf, als
+  n_factors: 128
+  n_epochs: 20
+  lr_all: 0.005
+  reg_all: 0.02
+  min_rating: 0.0
+  max_rating: 1.0
+
+ranker:
+  model_type: lightgbm
+  num_leaves: 63
+  learning_rate: 0.05
+  n_estimators: 300
+  min_child_samples: 20
+  feature_fraction: 0.8
+  bagging_fraction: 0.8
+  bagging_freq: 5
+  candidate_pool_size: 100     # Top-N candidates to rerank from each retrieval stage
+
+recommender:
+  top_k: 10                    # Final recommendations to return
+  embedding_weight: 0.4        # Weight for semantic similarity score
+  collab_weight: 0.4           # Weight for collaborative score
+  popularity_weight: 0.2       # Weight for popularity score (cold-start fallback)
+  diversity_penalty: 0.1       # MMR diversity penalty lambda
+
+mlflow:
+  tracking_uri: http://localhost:5000
+  experiment_name: podcast-recsys
+  model_name: podcast-recommender
+
+serving:
+  host: 0.0.0.0
+  port: 8000
+  max_recommendations: 50
+  cache_ttl_seconds: 300       # Redis cache TTL for user recommendations
+
+monitoring:
+  drift_threshold: 0.15        # PSI threshold to trigger retraining alert
+  performance_threshold: 0.05  # NDCG drop % to trigger alert
+  reference_window_days: 30
+  monitoring_window_days: 7
