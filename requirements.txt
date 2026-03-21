@@ -6,7 +6,7 @@ lightgbm==4.4.0
 numpy==2.2.1
 pandas==2.2.3
 scipy==1.15.1
-faiss-cpu==1.9.0          # ANN search for embedding retrieval
+faiss-cpu==1.9.0.post1         # ANN search for embedding retrieval
 
 # MLOps
 mlflow==2.19.0
