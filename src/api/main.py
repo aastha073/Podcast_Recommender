@@ -41,25 +41,32 @@ _request_count = 0
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load the model pipeline on startup, release on shutdown."""
+    """Load the model pipeline on startup in a thread so it doesn't block the event loop."""
     global pipeline
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
     model_dir = Path("models/pipeline")
 
-    if model_dir.exists():
-        logger.info(f"Loading pipeline from {model_dir}...")
-        pipeline = RecommendationPipeline.load(str(model_dir))
-        logger.info("Pipeline loaded. API ready.")
-    else:
-        # Train fresh on synthetic data if no saved model exists
-        logger.warning(f"No saved model at {model_dir}. Training on synthetic data...")
-        from src.data.loader import load_data
-        dataset = load_data(use_synthetic=True)
-        pipeline = RecommendationPipeline(
-            n_factors=64, n_epochs=10, ranker_n_estimators=100
-        )
-        pipeline.fit(dataset, use_mlflow=False)
-        pipeline.save(str(model_dir))
-        logger.info("Pipeline trained and saved.")
+    def _load():
+        if model_dir.exists():
+            logger.info(f"Loading pipeline from {model_dir}...")
+            p = RecommendationPipeline.load(str(model_dir))
+            logger.info("Pipeline loaded. API ready.")
+            return p
+        else:
+            logger.warning(f"No saved model at {model_dir}. Training on synthetic data...")
+            from src.data.loader import load_data
+            dataset = load_data(use_synthetic=True)
+            p = RecommendationPipeline(n_factors=64, n_epochs=10, ranker_n_estimators=100)
+            p.fit(dataset, use_mlflow=False)
+            p.save(str(model_dir))
+            logger.info("Pipeline trained and saved.")
+            return p
+
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor() as pool:
+        pipeline = await loop.run_in_executor(pool, _load)
 
     yield
 
