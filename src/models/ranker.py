@@ -82,7 +82,7 @@ class HybridRanker:
     ):
         self.params = {
             "objective": "regression",          # Pointwise; swap "lambdarank" for pairwise
-            "metric": "ndcg",
+            "metric": "mse",  # Changed from ndcg to mse for regression with float labels
             "num_leaves": num_leaves,
             "learning_rate": learning_rate,
             "n_estimators": n_estimators,
@@ -92,6 +92,7 @@ class HybridRanker:
             "bagging_freq": bagging_freq,
             "seed": random_seed,
             "verbose": -1,
+            "num_threads": 1,  # Disable parallelism to avoid fork issues on macOS
         }
         self._model: Optional[lgb.LGBMRegressor] = None
         self._user_category_prefs: dict[str, dict[str, float]] = {}
