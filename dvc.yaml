@@ -1,0 +1,84 @@
+stages:
+
+  # ── Stage 1: Prepare data ────────────────────────────────────────────────
+  prepare:
+    cmd: python -m src.data.loader
+    deps:
+      - src/data/loader.py
+      - configs/config.yaml
+    outs:
+      - data/processed/podcasts.parquet
+      - data/processed/interactions.parquet
+    params:
+      - configs/config.yaml:
+          - data.min_interactions
+          - data.test_size
+          - data.random_seed
+
+  # ── Stage 2: Train embedder ───────────────────────────────────────────────
+  embed:
+    cmd: python -m src.models.embedder
+    deps:
+      - src/models/embedder.py
+      - data/processed/podcasts.parquet
+    outs:
+      - data/processed/embeddings.npy
+      - models/embedder/
+    params:
+      - configs/config.yaml:
+          - embedder.model_name
+          - embedder.batch_size
+          - embedder.max_seq_length
+
+  # ── Stage 3: Train collaborative filter ──────────────────────────────────
+  collaborate:
+    cmd: python -m src.models.collaborative
+    deps:
+      - src/models/collaborative.py
+      - data/processed/interactions.parquet
+    outs:
+      - models/cf_model.pkl
+    metrics:
+      - metrics/cf_metrics.json:
+          cache: false
+    params:
+      - configs/config.yaml:
+          - collaborative.n_factors
+          - collaborative.n_epochs
+          - collaborative.lr_all
+          - collaborative.reg_all
+
+  # ── Stage 4: Train ranker ─────────────────────────────────────────────────
+  rank:
+    cmd: python -m src.models.ranker
+    deps:
+      - src/models/ranker.py
+      - data/processed/interactions.parquet
+      - data/processed/podcasts.parquet
+      - models/embedder/
+      - models/cf_model.pkl
+    outs:
+      - models/ranker.pkl
+    metrics:
+      - metrics/ranker_metrics.json:
+          cache: false
+    params:
+      - configs/config.yaml:
+          - ranker.num_leaves
+          - ranker.learning_rate
+          - ranker.n_estimators
+          - ranker.candidate_pool_size
+
+  # ── Stage 5: Evaluate full pipeline ──────────────────────────────────────
+  evaluate:
+    cmd: python -m src.models.recommender --synthetic --no-mlflow --save-dir models/pipeline
+    deps:
+      - src/models/recommender.py
+      - models/embedder/
+      - models/cf_model.pkl
+      - models/ranker.pkl
+    outs:
+      - models/pipeline/
+    metrics:
+      - metrics/pipeline_metrics.json:
+          cache: false

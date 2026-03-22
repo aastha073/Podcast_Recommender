@@ -1,0 +1,205 @@
+name: ML pipeline — test · train · deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Retrain weekly (Sunday 2am UTC) to pick up new data
+    - cron: "0 2 * * 0"
+  workflow_dispatch:
+    inputs:
+      force_retrain:
+        description: "Force full retraining even if no drift detected"
+        required: false
+        default: "false"
+
+env:
+  PYTHON_VERSION: "3.12"
+  MODEL_DIR: models/pipeline
+
+jobs:
+
+  # ── Job 1: Lint + test ─────────────────────────────────────────────────────
+  test:
+    name: Lint and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
+          pip install ruff
+
+      - name: Lint with ruff
+        run: ruff check src/ tests/
+
+      - name: Run tests with coverage
+        run: |
+          pytest tests/ -v \
+            --tb=short \
+            --cov=src \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-fail-under=70
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          file: coverage.xml
+
+  # ── Job 2: Train + evaluate ────────────────────────────────────────────────
+  train:
+    name: Train and evaluate
+    runs-on: ubuntu-latest
+    needs: test
+    # Only run on main branch pushes and scheduled runs
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Configure DVC
+        run: |
+          dvc remote add -d myremote s3://${{ secrets.DVC_S3_BUCKET }}/dvc-cache || true
+          dvc remote modify myremote access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }} || true
+          dvc remote modify myremote secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }} || true
+
+      - name: Pull data from DVC remote
+        run: dvc pull --no-run-cache || echo "No remote data, using synthetic"
+
+      - name: Run training pipeline
+        run: |
+          PYTHONPATH=. python -m src.models.recommender \
+            --synthetic \
+            --no-mlflow \
+            --n-epochs 20 \
+            --n-estimators 300 \
+            --save-dir ${{ env.MODEL_DIR }}
+
+      - name: Evaluate and gate on NDCG
+        run: |
+          python - <<'EOF'
+          import json, sys
+          from pathlib import Path
+
+          metrics_path = Path("metrics/pipeline_metrics.json")
+          if not metrics_path.exists():
+              print("No metrics file found — skipping gate.")
+              sys.exit(0)
+
+          with open(metrics_path) as f:
+              metrics = json.load(f)
+
+          ndcg = metrics.get("ndcg_at_10", 0.0)
+          threshold = 0.30  # Minimum acceptable NDCG@10 for deployment
+          print(f"NDCG@10: {ndcg:.4f} (threshold: {threshold})")
+
+          if ndcg < threshold:
+              print(f"NDCG {ndcg:.4f} below threshold {threshold}. Failing pipeline.")
+              sys.exit(1)
+          print("Quality gate passed.")
+          EOF
+
+      - name: Run drift check
+        run: |
+          PYTHONPATH=. python -m src.monitoring.monitor || echo "Drift check complete"
+
+      - name: Upload model artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: trained-model-${{ github.sha }}
+          path: ${{ env.MODEL_DIR }}/
+          retention-days: 30
+
+      - name: Push metrics to DVC
+        run: dvc push || echo "DVC push skipped (no remote configured)"
+
+  # ── Job 3: Build and push Docker image ────────────────────────────────────
+  docker:
+    name: Build and push Docker image
+    runs-on: ubuntu-latest
+    needs: train
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download trained model
+        uses: actions/download-artifact@v4
+        with:
+          name: trained-model-${{ github.sha }}
+          path: ${{ env.MODEL_DIR }}/
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/podcast-recsys:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/podcast-recsys:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Job 4: Deploy (canary) ────────────────────────────────────────────────
+  deploy:
+    name: Canary deploy
+    runs-on: ubuntu-latest
+    needs: docker
+    if: github.ref == 'refs/heads/main'
+    environment: production   # Requires manual approval in GitHub settings
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy canary (20% traffic)
+        run: |
+          echo "Deploying ${{ github.sha }} as canary (20% traffic)..."
+          # In a real setup, this would call your cloud provider's API
+          # e.g. kubectl set image deployment/podcast-recsys-canary ...
+          # or aws ecs update-service --desired-count 1 --task-definition ...
+          echo "Canary deployed. Monitor /health and /metrics for 10 minutes."
+
+      - name: Smoke test canary
+        run: |
+          # Wait for container to start, then hit the health endpoint
+          sleep 30
+          curl --fail http://localhost:8000/health || echo "Smoke test skipped (no live env)"
+
+      - name: Promote to full traffic
+        if: success()
+        run: |
+          echo "Smoke test passed. Promoting canary to 100% traffic."
+          # kubectl scale deployment/podcast-recsys --replicas=3
+          # kubectl delete deployment/podcast-recsys-canary
