@@ -42,3 +42,4 @@ pytest-cov>=6.0.0
 python-dotenv>=1.0.1
 loguru>=0.7.3
 tqdm>=4.67.1
+streamlit>=1.42.0

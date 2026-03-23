@@ -1,0 +1,24 @@
+data:
+  raw_path: data/raw/podcasts.csv
+  processed_path: data/processed/
+  min_interactions: 5
+  test_size: 0.2
+  random_seed: 42
+
+embedder:
+  model_name: all-MiniLM-L6-v2
+  batch_size: 64
+  max_seq_length: 256
+
+collaborative:
+  n_factors: 128
+  n_epochs: 20
+
+ranker:
+  n_estimators: 300
+  learning_rate: 0.05
+  candidate_pool_size: 100
+
+recommender:
+  top_k: 10
+  diversity_penalty: 0.1

@@ -1,0 +1,12 @@
+{
+  "timestamp": "20260322_163341",
+  "method": "psi_fallback",
+  "has_drift": true,
+  "avg_psi": 0.5951,
+  "per_feature_psi": {
+    "embedding_score": 0.7192,
+    "collab_score": 0.4846,
+    "play_count_norm": 0.5815
+  },
+  "drift_threshold": 0.15
+}
