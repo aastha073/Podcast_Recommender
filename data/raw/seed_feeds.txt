@@ -1,0 +1,4 @@
+# Starter RSS feeds for smoke and MVP runs.
+https://feeds.simplecast.com/54nAGcIl
+https://feeds.npr.org/510289/podcast.xml
+https://feeds.megaphone.fm/WWO3519750118
