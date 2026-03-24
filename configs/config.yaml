@@ -8,6 +8,10 @@ data:
   rss_metadata_path: data/raw/rss_metadata.json
   rss_processed_podcasts_path: data/processed/podcasts.parquet
   rss_processed_interactions_path: data/processed/interactions.parquet
+  kaggle_dataset: thoughtvector/podcastreviews
+  kaggle_raw_path: data/raw/kaggle
+  kaggle_processed_podcasts_path: data/processed/podcasts.parquet
+  kaggle_processed_interactions_path: data/processed/interactions.parquet
   processed_path: data/processed/
   min_interactions: 5
   test_size: 0.2

@@ -46,3 +46,4 @@ streamlit>=1.42.0
 requests>=2.32.3
 feedparser>=6.0.11
 pre-commit>=4.2.0
+kaggle>=1.6.17

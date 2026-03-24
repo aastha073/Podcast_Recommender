@@ -358,7 +358,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Train the podcast recommendation pipeline.")
     parser.add_argument("--config", type=str, default="configs/config.yaml")
-    parser.add_argument("--source", choices=["synthetic", "csv", "rss"], default=None)
+    parser.add_argument("--source", choices=["synthetic", "csv", "rss", "kaggle"], default=None)
     parser.add_argument("--synthetic", action="store_true", default=False,
                         help="Use synthetic data (overrides --source)")
     parser.add_argument("--no-mlflow", action="store_true",
@@ -381,6 +381,9 @@ if __name__ == "__main__":
     if source == "rss":
         podcasts_path = data_cfg.get("rss_processed_podcasts_path", "data/processed/podcasts.parquet")
         interactions_path = data_cfg.get("rss_processed_interactions_path", "data/processed/interactions.parquet")
+    if source == "kaggle":
+        podcasts_path = data_cfg.get("kaggle_processed_podcasts_path", "data/processed/podcasts.parquet")
+        interactions_path = data_cfg.get("kaggle_processed_interactions_path", "data/processed/interactions.parquet")
 
     dataset = load_data(
         podcasts_path=podcasts_path,

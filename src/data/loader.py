@@ -181,18 +181,18 @@ def load_data(
         PodcastDataset with train/test splits and fitted encoders.
     """
     source = source.lower()
-    if source not in {"synthetic", "csv", "rss"}:
-        raise ValueError("source must be one of: synthetic, csv, rss")
+    if source not in {"synthetic", "csv", "rss", "kaggle"}:
+        raise ValueError("source must be one of: synthetic, csv, rss, kaggle")
 
     if use_synthetic or source == "synthetic":
         logger.info("Using synthetic data for development.")
         podcasts, interactions = generate_synthetic_data(random_seed=random_seed)
-    elif source == "rss":
+    elif source in {"rss", "kaggle"}:
         if podcasts_path is None or interactions_path is None:
-            raise ValueError("RSS source requires processed podcasts/interactions parquet paths.")
-        logger.info(f"Loading RSS-derived podcasts from {podcasts_path}")
+            raise ValueError(f"{source} source requires processed podcasts/interactions parquet paths.")
+        logger.info(f"Loading {source}-derived podcasts from {podcasts_path}")
         podcasts = pd.read_parquet(podcasts_path)
-        logger.info(f"Loading RSS-derived interactions from {interactions_path}")
+        logger.info(f"Loading {source}-derived interactions from {interactions_path}")
         interactions = pd.read_parquet(interactions_path)
         interactions["timestamp"] = pd.to_datetime(interactions["timestamp"], errors="coerce", utc=True)
     else:
@@ -273,7 +273,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Prepare recommendation datasets.")
     parser.add_argument("--config", default="configs/config.yaml")
-    parser.add_argument("--source", choices=["synthetic", "csv", "rss"], default=None)
+    parser.add_argument("--source", choices=["synthetic", "csv", "rss", "kaggle"], default=None)
     parser.add_argument("--podcasts-path", default=None)
     parser.add_argument("--interactions-path", default=None)
     parser.add_argument("--output-dir", default="data/processed")
@@ -290,6 +290,9 @@ if __name__ == "__main__":
     if source == "rss":
         default_podcasts = data_cfg.get("rss_processed_podcasts_path", "data/processed/podcasts.parquet")
         default_interactions = data_cfg.get("rss_processed_interactions_path", "data/processed/interactions.parquet")
+    if source == "kaggle":
+        default_podcasts = data_cfg.get("kaggle_processed_podcasts_path", "data/processed/podcasts.parquet")
+        default_interactions = data_cfg.get("kaggle_processed_interactions_path", "data/processed/interactions.parquet")
 
     dataset = load_data(
         podcasts_path=args.podcasts_path or default_podcasts,
