@@ -1,0 +1,12 @@
+{
+  "feeds_total": 3,
+  "feeds_success": 3,
+  "feeds_failed": 0,
+  "episodes_new": 5790,
+  "episodes_failed": 0,
+  "last_scraped_at": "2026-03-24T17:00:53.366999+00:00",
+  "podcasts_rows": 3,
+  "interactions_rows": 5790,
+  "podcasts_path": "data/processed/podcasts.parquet",
+  "interactions_path": "data/processed/interactions.parquet"
+}

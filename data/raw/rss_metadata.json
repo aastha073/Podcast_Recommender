@@ -1,0 +1,24 @@
+{
+  "feeds": {
+    "https://feeds.simplecast.com/54nAGcIl": {
+      "etag": "\"c3a207fc10807fd09aa64377193a691a\"",
+      "last_modified": "Tue, 24 Mar 2026 13:34:17 GMT"
+    },
+    "https://feeds.npr.org/510289/podcast.xml": {
+      "etag": "W/\"1f62ad-wcsLowGJ1BWqyJFC4yhSJiUG2vM\"",
+      "last_modified": ""
+    },
+    "https://feeds.megaphone.fm/WWO3519750118": {
+      "etag": "",
+      "last_modified": "Tue, 24 Mar 2026 16:34:02 GMT"
+    }
+  },
+  "summary": {
+    "feeds_total": 3,
+    "feeds_success": 3,
+    "feeds_failed": 0,
+    "episodes_new": 5790,
+    "episodes_failed": 0,
+    "last_scraped_at": "2026-03-24T17:00:53.366999+00:00"
+  }
+}
