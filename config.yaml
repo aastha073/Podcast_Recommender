@@ -1,9 +1,21 @@
 data:
+  source: synthetic
   raw_path: data/raw/podcasts.csv
+  podcasts_path: data/raw/podcasts.csv
+  interactions_path: data/raw/interactions.csv
+  seed_feeds_path: data/raw/seed_feeds.txt
+  raw_rss_path: data/raw/rss_feeds.jsonl
+  rss_metadata_path: data/raw/rss_metadata.json
+  rss_processed_podcasts_path: data/processed/podcasts.parquet
+  rss_processed_interactions_path: data/processed/interactions.parquet
   processed_path: data/processed/
   min_interactions: 5          # Drop users with fewer interactions
   test_size: 0.2
   random_seed: 42
+  scrape:
+    timeout_seconds: 15
+    min_feeds_success: 1
+    min_episodes_new: 1
 
 embedder:
   model_name: all-MiniLM-L6-v2  # Fast, good quality. Swap for all-mpnet-base-v2 for better accuracy

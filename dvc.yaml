@@ -1,11 +1,31 @@
 stages:
 
+  # ── Stage 0: Extract RSS data ──────────────────────────────────────────────
+  extract_rss:
+    cmd: python -m src.data.extract_rss --seed-file data/raw/seed_feeds.txt --raw-jsonl data/raw/rss_feeds.jsonl --metadata-json data/raw/rss_metadata.json --processed-dir data/processed --summary-path metrics/rss_scrape_summary.json
+    deps:
+      - src/data/extract_rss.py
+      - src/data/rss_discovery.py
+      - src/data/rss_scraper.py
+      - src/data/normalize.py
+      - data/raw/seed_feeds.txt
+    outs:
+      - data/raw/rss_feeds.jsonl
+      - data/raw/rss_metadata.json
+      - data/processed/podcasts.parquet
+      - data/processed/interactions.parquet
+    metrics:
+      - metrics/rss_scrape_summary.json:
+          cache: false
+
   # ── Stage 1: Prepare data ────────────────────────────────────────────────
   prepare:
-    cmd: python -m src.data.loader
+    cmd: python -m src.data.loader --config configs/config.yaml --source rss --output-dir data/processed
     deps:
       - src/data/loader.py
       - configs/config.yaml
+      - data/processed/podcasts.parquet
+      - data/processed/interactions.parquet
     outs:
       - data/processed/podcasts.parquet
       - data/processed/interactions.parquet

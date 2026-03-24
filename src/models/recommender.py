@@ -32,6 +32,7 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 
+from src.config import load_project_config
 from src.data.loader import PodcastDataset, load_data
 from src.models.collaborative import CollaborativeFilter
 from src.models.embedder import PodcastEmbedder
@@ -356,8 +357,10 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Train the podcast recommendation pipeline.")
-    parser.add_argument("--synthetic", action="store_true", default=True,
-                        help="Use synthetic data (default: True)")
+    parser.add_argument("--config", type=str, default="configs/config.yaml")
+    parser.add_argument("--source", choices=["synthetic", "csv", "rss"], default=None)
+    parser.add_argument("--synthetic", action="store_true", default=False,
+                        help="Use synthetic data (overrides --source)")
     parser.add_argument("--no-mlflow", action="store_true",
                         help="Disable MLflow tracking")
     parser.add_argument("--n-factors", type=int, default=64)
@@ -366,8 +369,28 @@ if __name__ == "__main__":
     parser.add_argument("--save-dir", type=str, default="models/pipeline")
     args = parser.parse_args()
 
+    cfg = load_project_config(args.config)
+    data_cfg = cfg.get("data", {})
+    source = args.source or data_cfg.get("source", "synthetic")
+    if args.synthetic:
+        source = "synthetic"
+
     logger.info("Loading data...")
-    dataset = load_data(use_synthetic=args.synthetic)
+    podcasts_path = data_cfg.get("podcasts_path")
+    interactions_path = data_cfg.get("interactions_path")
+    if source == "rss":
+        podcasts_path = data_cfg.get("rss_processed_podcasts_path", "data/processed/podcasts.parquet")
+        interactions_path = data_cfg.get("rss_processed_interactions_path", "data/processed/interactions.parquet")
+
+    dataset = load_data(
+        podcasts_path=podcasts_path,
+        interactions_path=interactions_path,
+        test_size=float(data_cfg.get("test_size", 0.2)),
+        min_interactions=int(data_cfg.get("min_interactions", 5)),
+        random_seed=int(data_cfg.get("random_seed", 42)),
+        use_synthetic=(source == "synthetic"),
+        source=source,
+    )
 
     logger.info("Building pipeline...")
     pipeline = RecommendationPipeline(

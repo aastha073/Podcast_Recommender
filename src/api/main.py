@@ -17,6 +17,7 @@ Then open: http://localhost:8000/docs  (Swagger UI, auto-generated)
 from __future__ import annotations
 
 import time
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
@@ -35,6 +36,8 @@ from src.models.recommender import RecommendationPipeline
 pipeline: Optional[RecommendationPipeline] = None
 _start_time = time.time()
 _request_count = 0
+_model_ready = False
+_recommend_timeout_s = float(os.getenv("RECOMMEND_TIMEOUT_SECONDS", "5.0"))
 
 
 # ─── Startup / shutdown ───────────────────────────────────────────────────────
@@ -42,7 +45,7 @@ _request_count = 0
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load the model pipeline on startup in a thread so it doesn't block the event loop."""
-    global pipeline
+    global pipeline, _model_ready
     import asyncio
     from concurrent.futures import ThreadPoolExecutor
 
@@ -68,6 +71,7 @@ async def lifespan(app: FastAPI):
     with ThreadPoolExecutor() as pool:
         pipeline = await loop.run_in_executor(pool, _load)
 
+    _model_ready = pipeline is not None
     yield
 
     logger.info("Shutting down API.")
@@ -82,9 +86,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ALLOW_ORIGINS", "http://localhost:3000,http://localhost:8501").split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -146,6 +155,14 @@ def health():
     )
 
 
+@app.get("/ready", tags=["ops"])
+def ready():
+    """Readiness probe for orchestration systems."""
+    if pipeline is None or not _model_ready:
+        raise HTTPException(status_code=503, detail="Model not ready.")
+    return {"status": "ready"}
+
+
 @app.get("/metrics", tags=["ops"])
 def metrics():
     """Model metadata and serving statistics."""
@@ -181,12 +198,15 @@ def recommend(req: RecommendRequest):
 
     t0 = time.time()
     try:
+        started = time.time()
         recs_df = pipeline.recommend(
             user_id=req.user_id,
             query=req.query,
             user_history=req.exclude_podcast_ids,
             top_k=req.top_k,
         )
+        if time.time() - started > _recommend_timeout_s:
+            raise TimeoutError("Recommendation request exceeded timeout budget.")
     except Exception as e:
         logger.error(f"Recommendation error for user {req.user_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

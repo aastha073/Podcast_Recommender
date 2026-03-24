@@ -54,6 +54,36 @@ jobs:
             --cov-report=xml \
             --cov-fail-under=70
 
+      - name: RSS scraper smoke test
+        run: |
+          PYTHONPATH=. python -m src.data.extract_rss \
+            --seed-file data/raw/seed_feeds.txt \
+            --summary-path metrics/rss_scrape_summary.json
+
+      - name: Gate on scraper health
+        run: |
+          python - <<'EOF'
+          import json, sys
+          from pathlib import Path
+          from src.config import load_project_config
+
+          cfg = load_project_config("configs/config.yaml")
+          scrape_cfg = cfg.get("data", {}).get("scrape", {})
+          min_feeds = int(scrape_cfg.get("min_feeds_success", 1))
+          min_eps = int(scrape_cfg.get("min_episodes_new", 1))
+          path = Path("metrics/rss_scrape_summary.json")
+          if not path.exists():
+              print("Missing rss_scrape_summary.json")
+              sys.exit(1)
+          metrics = json.loads(path.read_text())
+          feeds_ok = int(metrics.get("feeds_success", 0))
+          eps_ok = int(metrics.get("episodes_new", 0))
+          print(f"feeds_success={feeds_ok}, episodes_new={eps_ok}")
+          if feeds_ok < min_feeds or eps_ok < min_eps:
+              print("RSS scrape quality gate failed.")
+              sys.exit(1)
+          EOF
+
       - name: Upload coverage
         uses: codecov/codecov-action@v4
         if: always()
@@ -94,8 +124,14 @@ jobs:
 
       - name: Run training pipeline
         run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            PYTHONPATH=. python -m src.data.extract_rss --summary-path metrics/rss_scrape_summary.json
+            DATA_SOURCE=rss
+          else
+            DATA_SOURCE=synthetic
+          fi
           PYTHONPATH=. python -m src.models.recommender \
-            --synthetic \
+            --source ${DATA_SOURCE} \
             --no-mlflow \
             --n-epochs 20 \
             --n-estimators 300 \
@@ -196,6 +232,7 @@ jobs:
           # Wait for container to start, then hit the health endpoint
           sleep 30
           curl --fail http://localhost:8000/health || echo "Smoke test skipped (no live env)"
+          curl --fail http://localhost:8000/ready || echo "Readiness check skipped (no live env)"
 
       - name: Promote to full traffic
         if: success()

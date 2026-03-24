@@ -16,8 +16,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 from loguru import logger
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
+
+from src.config import load_project_config
 
 
 # ─── Data Schemas ────────────────────────────────────────────────────────────
@@ -156,6 +157,7 @@ def load_data(
     min_interactions: int = 5,
     random_seed: int = 42,
     use_synthetic: bool = False,
+    source: str = "synthetic",
 ) -> PodcastDataset:
     """
     Load, validate, and split podcast recommendation data.
@@ -178,9 +180,21 @@ def load_data(
     Returns:
         PodcastDataset with train/test splits and fitted encoders.
     """
-    if use_synthetic or (podcasts_path is None or interactions_path is None):
+    source = source.lower()
+    if source not in {"synthetic", "csv", "rss"}:
+        raise ValueError("source must be one of: synthetic, csv, rss")
+
+    if use_synthetic or source == "synthetic":
         logger.info("Using synthetic data for development.")
         podcasts, interactions = generate_synthetic_data(random_seed=random_seed)
+    elif source == "rss":
+        if podcasts_path is None or interactions_path is None:
+            raise ValueError("RSS source requires processed podcasts/interactions parquet paths.")
+        logger.info(f"Loading RSS-derived podcasts from {podcasts_path}")
+        podcasts = pd.read_parquet(podcasts_path)
+        logger.info(f"Loading RSS-derived interactions from {interactions_path}")
+        interactions = pd.read_parquet(interactions_path)
+        interactions["timestamp"] = pd.to_datetime(interactions["timestamp"], errors="coerce", utc=True)
     else:
         logger.info(f"Loading podcasts from {podcasts_path}")
         podcasts = pd.read_csv(podcasts_path)
@@ -255,8 +269,38 @@ def _validate_interactions(df: pd.DataFrame) -> None:
 # ─── Quick sanity check ──────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    dataset = load_data(use_synthetic=True)
-    print(dataset.podcasts.head())
-    print(dataset.train_interactions.head())
-    print(f"\nTrain size: {len(dataset.train_interactions)}")
-    print(f"Test size:  {len(dataset.test_interactions)}")
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Prepare recommendation datasets.")
+    parser.add_argument("--config", default="configs/config.yaml")
+    parser.add_argument("--source", choices=["synthetic", "csv", "rss"], default=None)
+    parser.add_argument("--podcasts-path", default=None)
+    parser.add_argument("--interactions-path", default=None)
+    parser.add_argument("--output-dir", default="data/processed")
+    args = parser.parse_args()
+
+    cfg = load_project_config(args.config)
+    data_cfg = cfg.get("data", {})
+    source = args.source or data_cfg.get("source", "synthetic")
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    default_podcasts = data_cfg.get("podcasts_path")
+    default_interactions = data_cfg.get("interactions_path")
+    if source == "rss":
+        default_podcasts = data_cfg.get("rss_processed_podcasts_path", "data/processed/podcasts.parquet")
+        default_interactions = data_cfg.get("rss_processed_interactions_path", "data/processed/interactions.parquet")
+
+    dataset = load_data(
+        podcasts_path=args.podcasts_path or default_podcasts,
+        interactions_path=args.interactions_path or default_interactions,
+        test_size=float(data_cfg.get("test_size", 0.2)),
+        min_interactions=int(data_cfg.get("min_interactions", 5)),
+        random_seed=int(data_cfg.get("random_seed", 42)),
+        use_synthetic=source == "synthetic",
+        source=source,
+    )
+
+    dataset.podcasts.to_parquet(output_dir / "podcasts.parquet", index=False)
+    dataset.interactions.to_parquet(output_dir / "interactions.parquet", index=False)
+    logger.info(f"Saved processed datasets to {output_dir}")
